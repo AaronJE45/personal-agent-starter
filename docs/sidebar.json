@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "course_id": "metana-personal-agent",
+  "progress": {
+    "source": "site_mcq",
+    "completion_rule": "correct_answer",
+    "total_lessons": 35,
+    "repository_grading": false
+  },
+  "modules": [
+    {
+      "id": "module_1",
+      "title": "Start your personal agent project",
+      "reference_path": "solutions/module_1/",
+      "lessons": [
+        {
+          "id": "lesson_1",
+          "title": "Meet your personal agent"
+        },
+        {
+          "id": "lesson_2",
+          "title": "Models, tools, and memory"
+        },
+        {
+          "id": "lesson_3",
+          "title": "Create your GitHub repository"
+        },
+        {
+          "id": "lesson_4",
+          "title": "Set up and run the starter"
+        },
+        {
+          "id": "lesson_5",
+          "title": "Personalise and save your project"
+        }
+      ]
+    },
+    {
+      "id": "module_2",
+      "title": "Talk to an AI model",
+      "reference_path": "solutions/module_2/",
+      "lessons": [
+        {
+          "id": "lesson_6",
+          "title": "Your first model request"
+        },
+        {
+          "id": "lesson_7",
+          "title": "Write your assistant’s instructions"
+        },
+        {
+          "id": "lesson_8",
+          "title": "Handle user messages"
+        },
+        {
+          "id": "lesson_9",
+          "title": "Build a conversation loop"
+        },
+        {
+          "id": "lesson_10",
+          "title": "Keep configuration private"
+        }
+      ]
+    },
+    {
+      "id": "module_3",
+      "title": "Give your assistant tools",
+      "reference_path": "solutions/module_3/",
+      "lessons": [
+        {
+          "id": "lesson_11",
+          "title": "What is a tool?"
+        },
+        {
+          "id": "lesson_12",
+          "title": "Add and list tasks"
+        },
+        {
+          "id": "lesson_13",
+          "title": "Complete a task"
+        },
+        {
+          "id": "lesson_14",
+          "title": "Save and search notes"
+        },
+        {
+          "id": "lesson_15",
+          "title": "Validate tool inputs"
+        }
+      ]
+    },
+    {
+      "id": "module_4",
+      "title": "Build the agent loop",
+      "reference_path": "solutions/module_4/",
+      "lessons": [
+        {
+          "id": "lesson_16",
+          "title": "Describe tools to the model"
+        },
+        {
+          "id": "lesson_17",
+          "title": "Read a tool request"
+        },
+        {
+          "id": "lesson_18",
+          "title": "Execute the requested tool"
+        },
+        {
+          "id": "lesson_19",
+          "title": "Return the result"
+        },
+        {
+          "id": "lesson_20",
+          "title": "Put limits on the loop"
+        }
+      ]
+    },
+    {
+      "id": "module_5",
+      "title": "Add memory and storage",
+      "reference_path": "solutions/module_5/",
+      "lessons": [
+        {
+          "id": "lesson_21",
+          "title": "Remember the conversation"
+        },
+        {
+          "id": "lesson_22",
+          "title": "Separate history from saved data"
+        },
+        {
+          "id": "lesson_23",
+          "title": "Save tasks and notes permanently"
+        },
+        {
+          "id": "lesson_24",
+          "title": "Separate users’ information"
+        },
+        {
+          "id": "lesson_25",
+          "title": "Reset conversation history"
+        }
+      ]
+    },
+    {
+      "id": "module_6",
+      "title": "Connect your agent to WhatsApp",
+      "reference_path": "solutions/module_6/",
+      "lessons": [
+        {
+          "id": "lesson_26",
+          "title": "Follow the message journey"
+        },
+        {
+          "id": "lesson_27",
+          "title": "Set up WhatsApp testing"
+        },
+        {
+          "id": "lesson_28",
+          "title": "Make your local app reachable"
+        },
+        {
+          "id": "lesson_29",
+          "title": "Connect messages to your agent"
+        },
+        {
+          "id": "lesson_30",
+          "title": "Chat with your assistant"
+        }
+      ]
+    },
+    {
+      "id": "module_7",
+      "title": "Finish and share your project",
+      "reference_path": "solutions/module_7/",
+      "lessons": [
+        {
+          "id": "lesson_31",
+          "title": "Walk through your agent’s capabilities"
+        },
+        {
+          "id": "lesson_32",
+          "title": "Troubleshoot common problems"
+        },
+        {
+          "id": "lesson_33",
+          "title": "Personalise the experience"
+        },
+        {
+          "id": "lesson_34",
+          "title": "Document and publish your work"
+        },
+        {
+          "id": "lesson_35",
+          "title": "Understand what you built"
+        }
+      ]
+    }
+  ],
+  "support": [
+    {
+      "title": "Setup guides",
+      "path": "docs/setup_guides.md"
+    },
+    {
+      "title": "Build guide",
+      "path": "docs/lesson_build_guide.md"
+    },
+    {
+      "title": "Troubleshooting and restart",
+      "path": "docs/troubleshooting.md"
+    },
+    {
+      "title": "Free tiers and token refresh",
+      "path": "docs/free_tier_limits.md"
+    },
+    {
+      "title": "Reference solutions",
+      "path": "solutions/README.md"
+    }
+  ]
+}
