@@ -1,70 +1,122 @@
-"""Pre-built SQLite helpers. Module 5 connects these to tools.py.
-
-Every operation filters by user_id. Connections are short-lived and queries
-are parameterised. This database is private local data: never commit it.
-"""
+# storage.py
 import sqlite3
-from contextlib import contextmanager
-import config
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parent / "agent_data.db"
 
 
-@contextmanager
-def connection():
-    config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(config.DB_PATH, timeout=10)
-    db.row_factory = sqlite3.Row
-    try:
-        yield db
-        db.commit()
-    finally:
-        db.close()
+def get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-def db_init():
-    with connection() as db:
-        db.executescript("""
+def init_db() -> None:
+    """Initializes the SQLite tables for tasks and notes if they do not exist."""
+    with get_connection() as conn:
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY, user_id TEXT NOT NULL,
-                title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'default_user',
+                title TEXT NOT NULL,
+                done INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS notes (
-                id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, text TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS deliveries (
-                id TEXT PRIMARY KEY, status TEXT NOT NULL,
-                reply TEXT, updated REAL NOT NULL);
-        """)
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'default_user',
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.commit()
 
 
-def db_add_task(user_id, title):
-    db_init()
-    with connection() as db:
-        cursor = db.execute("INSERT INTO tasks (user_id, title) VALUES (?, ?)", (user_id, title))
-        return {"id": cursor.lastrowid, "title": title, "completed": False}
+def db_add_task(title: str, user_id: str = "default_user") -> dict:
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO tasks (user_id, title, done) VALUES (?, ?, 0)",
+            (user_id, title),
+        )
+        conn.commit()
+        task_id = cursor.lastrowid
+    return {"id": task_id, "user_id": user_id, "title": title, "done": False}
 
 
-def db_list_tasks(user_id):
-    db_init()
-    with connection() as db:
-        rows = db.execute("SELECT id, title, completed FROM tasks WHERE user_id = ? ORDER BY id", (user_id,))
-        return [dict(row, completed=bool(row["completed"])) for row in rows]
+def db_list_tasks(user_id: str = "default_user") -> list[dict]:
+    init_db()
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, user_id, title, done FROM tasks WHERE user_id = ? ORDER BY id ASC",
+            (user_id,),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "title": row["title"],
+            "done": bool(row["done"]),
+        }
+        for row in rows
+    ]
 
 
-def db_complete_task(user_id, task_id):
-    db_init()
-    with connection() as db:
-        result = db.execute("UPDATE tasks SET completed = 1 WHERE user_id = ? AND id = ?", (user_id, task_id))
-        return {"completed": bool(result.rowcount), "id": task_id}
+def db_complete_task(task_id: int, user_id: str = "default_user") -> dict | None:
+    init_db()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, user_id, title, done FROM tasks WHERE id = ? AND user_id = ?",
+            (task_id, user_id),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE tasks SET done = 1 WHERE id = ? AND user_id = ?",
+            (task_id, user_id),
+        )
+        conn.commit()
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "title": row["title"],
+        "done": True,
+    }
 
 
-def db_save_note(user_id, text):
-    db_init()
-    with connection() as db:
-        cursor = db.execute("INSERT INTO notes (user_id, text) VALUES (?, ?)", (user_id, text))
-        return {"id": cursor.lastrowid, "text": text}
+def db_save_note(content: str, user_id: str = "default_user") -> dict:
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO notes (user_id, content) VALUES (?, ?)",
+            (user_id, content),
+        )
+        conn.commit()
+        note_id = cursor.lastrowid
+    return {"id": note_id, "user_id": user_id, "content": content}
 
 
-def db_search_notes(user_id, query):
-    db_init()
-    with connection() as db:
-        rows = db.execute("SELECT id, text FROM notes WHERE user_id = ? ORDER BY id", (user_id,))
-        # Plain substring matching: %, _ and SQL characters are just text.
-        return [dict(row) for row in rows if query.casefold() in row["text"].casefold()]
+def db_search_notes(query: str = "", user_id: str = "default_user") -> list[dict]:
+    init_db()
+    query_clean = (query or "").strip().lower()
+    with get_connection() as conn:
+        if not query_clean:
+            rows = conn.execute(
+                "SELECT id, user_id, content FROM notes WHERE user_id = ? ORDER BY id ASC",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, user_id, content FROM notes WHERE user_id = ? AND LOWER(content) LIKE ? ORDER BY id ASC",
+                (user_id, f"%{query_clean}%"),
+            ).fetchall()
+    return [
+        {"id": row["id"], "user_id": row["user_id"], "content": row["content"]}
+        for row in rows
+    ]

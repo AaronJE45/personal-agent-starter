@@ -1,66 +1,100 @@
-"""Lessons 11–15: small tools; Lesson 23: switch from memory to SQLite."""
-import config
-import storage
-
-_tasks = {}
-_notes = {}
-
-
-def _text(value):
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("Enter some text first.")
-    if len(value) > 2000:
-        raise ValueError("Please keep text under 2,000 characters.")
-    return value.strip()
+# tools.py (Modules 5, 6, and 7 Reference Solution)
+from datetime import datetime
+from storage import (
+    db_add_task,
+    db_list_tasks,
+    db_complete_task,
+    db_save_note,
+    db_search_notes,
+)
 
 
-def add_task(title, *, user_id="terminal"):
-    title = _text(title)
-    if config.USE_DATABASE:
-        return storage.db_add_task(user_id, title)
-    tasks = _tasks.setdefault(user_id, [])
-    task = {"id": len(tasks) + 1, "title": title, "completed": False}
-    tasks.append(task)
-    return dict(task)
+def get_current_time() -> dict:
+    """Returns the current local date and time."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {
+        "status": "success",
+        "current_time": now
+    }
 
 
-def list_tasks(*, user_id="terminal"):
-    if config.USE_DATABASE:
-        return storage.db_list_tasks(user_id)
-    return [dict(task) for task in _tasks.get(user_id, [])]
+def add_task(title: str, user_id: str = "default_user") -> dict:
+    """Adds a new task permanently to SQLite for the given user_id."""
+    if not isinstance(title, str) or not title.strip():
+        return {
+            "status": "error",
+            "message": "Task title cannot be empty."
+        }
+
+    clean_title = title.strip()
+    task = db_add_task(title=clean_title, user_id=user_id)
+    return {
+        "status": "success",
+        "message": f"Added task #{task['id']}: '{clean_title}'",
+        "task": task
+    }
 
 
-def complete_task(task_id, *, user_id="terminal"):
-    if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1:
-        raise ValueError("task_id must be a positive whole number.")
-    if config.USE_DATABASE:
-        return storage.db_complete_task(user_id, task_id)
-    for task in _tasks.get(user_id, []):
-        if task["id"] == task_id:
-            task["completed"] = True
-            return {"completed": True, "id": task_id}
-    return {"completed": False, "id": task_id}
+def list_tasks(user_id: str = "default_user") -> dict:
+    """Lists all tasks stored in SQLite for the given user_id."""
+    tasks = db_list_tasks(user_id=user_id)
+    return {
+        "status": "success",
+        "count": len(tasks),
+        "tasks": tasks
+    }
 
 
-def save_note(text, *, user_id="terminal"):
-    text = _text(text)
-    if config.USE_DATABASE:
-        return storage.db_save_note(user_id, text)
-    notes = _notes.setdefault(user_id, [])
-    note = {"id": len(notes) + 1, "text": text}
-    notes.append(note)
-    return dict(note)
+def complete_task(task_id: int, user_id: str = "default_user") -> dict:
+    """Marks a task in SQLite as complete using its integer ID and user_id."""
+    try:
+        target_id = int(task_id)
+    except (ValueError, TypeError):
+        return {
+            "status": "error",
+            "message": f"Invalid task_id '{task_id}'. Please provide a valid number."
+        }
+
+    updated_task = db_complete_task(task_id=target_id, user_id=user_id)
+    if not updated_task:
+        return {
+            "status": "error",
+            "message": f"Task with ID {target_id} was not found."
+        }
+
+    return {
+        "status": "success",
+        "message": f"Completed task #{target_id}: '{updated_task['title']}'",
+        "task": updated_task
+    }
 
 
-def search_notes(query, *, user_id="terminal"):
-    query = _text(query)
-    if config.USE_DATABASE:
-        return storage.db_search_notes(user_id, query)
-    return [dict(note) for note in _notes.get(user_id, []) if query.casefold() in note["text"].casefold()]
+def save_note(content: str, user_id: str = "default_user") -> dict:
+    """Saves a personal note permanently to SQLite for the given user_id."""
+    if not isinstance(content, str) or not content.strip():
+        return {
+            "status": "error",
+            "message": "Note content cannot be empty."
+        }
+
+    clean_content = content.strip()
+    note = db_save_note(content=clean_content, user_id=user_id)
+    return {
+        "status": "success",
+        "message": f"Saved note #{note['id']}.",
+        "note": note
+    }
 
 
-TOOL_FUNCTIONS = {
-    "add_task": add_task, "list_tasks": list_tasks,
-    "complete_task": complete_task, "save_note": save_note,
-    "search_notes": search_notes,
-}
+def search_notes(query: str = "", user_id: str = "default_user") -> dict:
+    """Searches saved notes in SQLite by keyword (case-insensitive) for the given user_id."""
+    if query is None:
+        query = ""
+    query_clean = str(query).strip()
+    matches = db_search_notes(query=query_clean, user_id=user_id)
+    return {
+        "status": "success",
+        "query": query_clean,
+        "count": len(matches),
+        "notes": matches
+    }

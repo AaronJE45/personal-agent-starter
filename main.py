@@ -25,3 +25,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+# main.py
+from config import AGENT_NAME
+
+def main():
+    print("=" * 50)
+    print("🤖 Personal AI Agent Starter Loaded!")
+    print(f"Assistant Name : {AGENT_NAME}")
+    print("Environment    : Local Starter Ready")
+    print("Status         : Ready for customization in Lesson 5.")
+    print("=" * 50)
+
+if __name__ == "__main__":
+    main()

@@ -1,163 +1,122 @@
-"""Pre-built local WhatsApp transport. See docs/setup_guides.md.
-
-One process, one background worker; acknowledge valid webhooks promptly.
-SQLite reserves message IDs across restarts and caches replies before sending.
-This is a learning demo, not an always-online or exactly-once delivery system.
-"""
-import hashlib
+# whatsapp_server.py
+import os
 import hmac
-import logging
-import re
-import threading
-import time
-from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import requests
-from flask import Flask, request
-import config
-import storage
-from agent import Agent, AgentError
+from fastapi import FastAPI, Request, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from dotenv import load_dotenv
 
-logger = logging.getLogger(__name__)
-assistant = Agent()
-worker = ThreadPoolExecutor(max_workers=1)
-slots = threading.BoundedSemaphore(20)
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 128 * 1024
+from agent import generate_reply
 
+load_dotenv()
 
-def handle_message(text, sender):
-    # TODO: Lesson 29 — replace this reply with:
-    # return assistant.chat(text, user_id=sender)
-    return "Webhook connected! Complete Lesson 29 to connect your agent."
+app = FastAPI(title="Personal AI Agent WhatsApp Webhook")
 
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "").strip()
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "metana_verify_token_123").strip()
+WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "").strip()
 
-def send_reply(sender, text):
-    response = requests.post(
-        f"https://graph.facebook.com/{config.META_GRAPH_VERSION}/{config.WHATSAPP_PHONE_NUMBER_ID}/messages",
-        headers={"Authorization": f"Bearer {config.WHATSAPP_ACCESS_TOKEN}"},
-        json={"messaging_product": "whatsapp", "to": sender, "type": "text",
-              "text": {"body": text[:4000]}}, timeout=20,
-    )
-    # Do not log response bodies, headers, phone numbers, or tokens.
-    if response.status_code >= 400:
-        raise RuntimeError(f"WhatsApp send failed (HTTP {response.status_code}).")
+# Set of processed WhatsApp message IDs to prevent duplicate replies on webhook retries
+PROCESSED_MESSAGE_IDS: set[str] = set()
 
 
-def reserve(message_id):
-    storage.db_init()
-    with storage.connection() as db:
-        db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT status, reply, updated FROM deliveries WHERE id = ?", (message_id,)).fetchone()
-        if row:
-            if row["status"] == "done":
-                return False, None
-            if row["status"] == "pending":
-                if time.time() - row["updated"] > 300:
-                    # Crash recovery: do not rerun tools whose outcome is unknown.
-                    db.execute("UPDATE deliveries SET status = 'uncertain' WHERE id = ?", (message_id,))
-                return False, None
-            if row["status"] == "uncertain":
-                return False, None
-            db.execute("UPDATE deliveries SET status = 'pending', updated = ? WHERE id = ?", (time.time(), message_id))
-            return True, row["reply"]
-        db.execute("INSERT INTO deliveries (id, status, updated) VALUES (?, 'pending', ?)", (message_id, time.time()))
-        return True, None
+def verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
+    """Validates X-Hub-Signature-256 if WHATSAPP_APP_SECRET is configured."""
+    if not WHATSAPP_APP_SECRET:
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(
+        WHATSAPP_APP_SECRET.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    received = signature_header.split("sha256=", 1)[1]
+    return hmac.compare_digest(expected, received)
 
 
-def process_message(message_id, sender, text):
-    cached = None
-    reserved = False
-    try:
-        reserved, cached = reserve(message_id)
-        if not reserved:
-            return
-        if cached is None:
-            try:
-                cached = handle_message(text, sender)
-            except AgentError as error:
-                cached = str(error)
-            except Exception:
-                # A tool could have run; never automatically repeat unknown actions.
-                cached = "I could not finish that message. Check saved tasks or notes before retrying."
-                logger.warning("Agent processing failed; inspect your configuration and reference solution.")
-            with storage.connection() as db:
-                db.execute("UPDATE deliveries SET reply = ? WHERE id = ?", (cached, message_id))
-        send_reply(sender, cached)
-        with storage.connection() as db:
-            db.execute("UPDATE deliveries SET status = 'done', updated = ? WHERE id = ?", (time.time(), message_id))
-    except Exception:
-        if reserved:
-            try:
-                with storage.connection() as db:
-                    db.execute("UPDATE deliveries SET status = 'retry', updated = ? WHERE id = ?", (time.time(), message_id))
-            except Exception:
-                logger.warning("Could not record delivery state.")
-        logger.warning("Delivery failed. See docs/troubleshooting.md. No credentials are logged.")
-    finally:
-        slots.release()
+def send_whatsapp_reply(recipient_phone: str, reply_text: str) -> dict:
+    """Sends a text reply back to the user via the official WhatsApp Cloud API."""
+    if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+        print(f"[WhatsApp Dry-Run Reply to {recipient_phone}]: {reply_text}")
+        return {"status": "dry_run", "to": recipient_phone, "text": reply_text}
+
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": recipient_phone,
+        "type": "text",
+        "text": {"body": reply_text},
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=20)
+    return {"status": "sent", "http_status": resp.status_code}
+
+
+def handle_incoming_whatsapp_message(sender_phone: str, message_text: str) -> str:
+    """
+    Bridges an incoming WhatsApp text message to your personal AI agent.
+    """
+    # TODO: Lesson 29 - Pass message_text and user_id=sender_phone to generate_reply()
+    # and return the agent's reply string!
+    return f"Echo from starter webhook (Connect generate_reply in Lesson 29): {message_text}"
 
 
 @app.get("/webhook")
-def verify():
-    expected = config.WHATSAPP_VERIFY_TOKEN
-    supplied = request.args.get("hub.verify_token", "")
-    if expected and request.args.get("hub.mode") == "subscribe" and hmac.compare_digest(supplied, expected):
-        return request.args.get("hub.challenge", ""), 200, {"Content-Type": "text/plain"}
-    return "Verification failed", 403
+async def verify_webhook(
+    hub_mode: str | None = Query(default=None, alias="hub.mode"),
+    hub_verify_token: str | None = Query(default=None, alias="hub.verify_token"),
+    hub_challenge: str | None = Query(default=None, alias="hub.challenge"),
+):
+    """Handles Meta's GET /webhook verification challenge."""
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        print("✅ Webhook verified successfully with Meta!")
+        return PlainTextResponse(content=hub_challenge or "", status_code=200)
+    raise HTTPException(status_code=403, detail="Webhook verification failed: token mismatch.")
 
 
 @app.post("/webhook")
-def receive():
-    secret = config.WHATSAPP_APP_SECRET
-    if not secret:
-        return "Configure the app secret first", 503
-    expected = "sha256=" + hmac.new(secret.encode(), request.get_data(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(request.headers.get("X-Hub-Signature-256", ""), expected):
-        return "Invalid signature", 403
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
-        return "Invalid JSON", 400
-    # Ignore delivery-status notifications and non-text messages.
+async def receive_whatsapp_webhook(request: Request):
+    """Receives incoming WhatsApp messages, deduplicates them, and replies via the agent."""
+    raw_body = await request.body()
+    sig_header = request.headers.get("X-Hub-Signature-256")
+    if not verify_webhook_signature(raw_body, sig_header):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+
+    payload = await request.json()
     try:
-        for entry in payload.get("entry", []):
+        entries = payload.get("entry", [])
+        for entry in entries:
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-                if value.get("metadata", {}).get("phone_number_id") != config.WHATSAPP_PHONE_NUMBER_ID:
-                    continue
-                for message in value.get("messages", []):
-                    sender, message_id = message.get("from"), message.get("id")
-                    text = message.get("text", {}).get("body")
-                    if sender != config.WHATSAPP_ALLOWED_SENDER:
-                        continue  # Restrict this personal demo to the configured phone.
-                    if message.get("type") != "text" or not all(isinstance(x, str) and x for x in (sender, message_id, text)):
+                messages = value.get("messages", [])
+                for msg in messages:
+                    msg_id = msg.get("id")
+                    if msg_id and msg_id in PROCESSED_MESSAGE_IDS:
                         continue
-                    if not slots.acquire(blocking=False):
-                        return "Busy; retry later", 503
-                    try:
-                        worker.submit(process_message, message_id, sender, text)
-                    except Exception:
-                        slots.release()
-                        return "Worker unavailable", 503
-    except (AttributeError, TypeError):
-        return "Malformed event", 400
-    return "OK", 200
+                    if msg_id:
+                        PROCESSED_MESSAGE_IDS.add(msg_id)
 
+                    if msg.get("type") == "text":
+                        sender_phone = msg.get("from", "whatsapp_user")
+                        message_text = msg.get("text", {}).get("body", "").strip()
+                        if message_text:
+                            print(f"📩 [WhatsApp Incoming from {sender_phone}]: {message_text}")
+                            reply_text = handle_incoming_whatsapp_message(sender_phone, message_text)
+                            print(f"📤 [Agent Reply to {sender_phone}]: {reply_text}")
+                            send_whatsapp_reply(sender_phone, reply_text)
+    except Exception as exc:
+        print(f"⚠️ Error processing webhook payload: {exc}")
 
-def validate_settings():
-    names = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_APP_SECRET",
-             "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_ALLOWED_SENDER", "META_GRAPH_VERSION"]
-    missing = [name for name in names if not getattr(config, name)]
-    if missing:
-        raise SystemExit("Set these values in .env first: " + ", ".join(missing))
-    if not re.fullmatch(r"v\d+\.\d+", config.META_GRAPH_VERSION):
-        raise SystemExit("META_GRAPH_VERSION must look like vNN.0; use the version shown by Meta.")
-    if not config.WHATSAPP_ALLOWED_SENDER.isdigit():
-        raise SystemExit("WHATSAPP_ALLOWED_SENDER must contain country code and digits only, without +.")
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    validate_settings()
-    # Disable request logs: webhook verification URLs contain your verify token.
-    logging.getLogger("werkzeug").disabled = True
-    print("Webhook listening at http://127.0.0.1:8000/webhook. Keep this terminal open.")
-    app.run(host="127.0.0.1", port=8000, debug=False, use_reloader=False)
+    import uvicorn
+    print("🚀 Starting WhatsApp Webhook Server on http://localhost:8000 ...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)

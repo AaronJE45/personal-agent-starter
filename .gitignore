@@ -1,12 +1,7 @@
-.env
-.env.*
-!.env.example
+venv/
 .venv/
 __pycache__/
-*.py[cod]
-data/
-*.sqlite*
+*.pyc
+.env
 *.db
-*.log
 .DS_Store
-.pytest_cache/
